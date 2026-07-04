@@ -1,0 +1,97 @@
+# =============================================================================
+# ApexOS product-repo denylist gate — TEMPLATE (build-pipeline owned).
+#
+# Rendered + injected into every product-repo skeleton as
+# .github/workflows/apexos-gate.yml by `python -m apexos_harness package`
+# (placeholders REPO / ORG / GATE_PATHS_JSON / EXCLUDE_GLOBS_JSON, in
+# double-brace form, are substituted at render time).
+# PIPELINE-OWNED: never hand-edit the rendered file in a product repo —
+# regenerate via the harness (see .apexos/provenance.yaml).
+#
+# The `gate` JOB ID is the required-status-check name for branch protection
+# (coordinated with the branch-protection doc) — DO NOT RENAME IT.
+#
+# Secrets: BUILD_PIPELINE_TOKEN — a fine-grained PAT with READ-ONLY
+# `contents` permission on apexinfosysindia/build-pipeline ONLY. Needed because the
+# gate tool + master rename map live in the build-pipeline repo, not in the
+# product repos; the token can read nothing else and can write nothing.
+# =============================================================================
+name: apexos-gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:   # job id == required status check name — never rename
+    name: denylist gate (os-agent)
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout os-agent
+        uses: actions/checkout@v4
+
+      - name: checkout build-pipeline (gate tool + master map)
+        uses: actions/checkout@v4
+        with:
+          repository: apexinfosysindia/build-pipeline
+          ref: main
+          path: .build-pipeline
+          token: ${{ secrets.BUILD_PIPELINE_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install gate deps
+        run: pip install pyyaml
+
+      - name: run gate (raw JSON)
+        working-directory: .build-pipeline/tools/gate
+        env:
+          GATE_PATHS: '["."]'
+        run: |
+          paths=$(python -c "import json, os; print(' '.join(os.path.normpath(os.path.join(os.environ['GITHUB_WORKSPACE'], p)) for p in json.loads(os.environ['GATE_PATHS'])))")
+          python -m apexos_gate --map ../../transform/rename-map.yaml --json $paths \
+            > "$RUNNER_TEMP/gate.json" || true
+
+      - name: apply exclude globs + fail on violations
+        env:
+          EXCLUDE_GLOBS: '[]'
+        run: |
+          python - <<'PY'
+          import fnmatch, json, os, sys
+
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "gate.json")) as f:
+              gr = json.load(f)
+          # Same fnmatch semantics as the harness (adopt.py step 5), plus the
+          # surfaces no product-repo run may ever scan: the nested
+          # build-pipeline checkout (it CONTAINS the denylist), git metadata,
+          # and the pipeline-owned .apexos/ provenance (it records the
+          # upstream URL by design — see .apexos/provenance.yaml header).
+          excludes = json.loads(os.environ["EXCLUDE_GLOBS"]) + [
+              "*/.build-pipeline/*", "*.build-pipeline/*",
+              "*/.git/*", "*.git/*",
+              "*/.apexos/*", "*.apexos/*",
+          ]
+          violations = 0
+          excluded = 0
+          census = {}
+          for hit in gr["violations"]:
+              if any(fnmatch.fnmatch(hit["path"], g) for g in excludes):
+                  excluded += 1
+                  continue
+              violations += 1
+              entry = census.setdefault(hit["term"], {"count": 0, "files": []})
+              entry["count"] += 1
+              if hit["path"] not in entry["files"]:
+                  entry["files"].append(hit["path"])
+          print(f"gate: {violations} violations, {len(gr['allowed'])} allowed, "
+                f"{excluded} excluded")
+          for term, entry in sorted(census.items()):
+              print(f"  term {term!r}: {entry['count']} hit(s)")
+              for path in entry["files"][:10]:
+                  print(f"    {path}")
+          sys.exit(1 if violations else 0)
+          PY

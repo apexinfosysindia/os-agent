@@ -1,0 +1,39 @@
+name: build
+
+on:
+  release:
+    types: ["published"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  GOLANG_VERSION: "1.26"
+
+jobs:
+  build:
+    name: Build OS-Agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0 # Needed for changelog generation
+
+      - name: Setup go ${{ env.GOLANG_VERSION }}
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+
+      - name: Run GoReleaser build
+        uses: goreleaser/goreleaser-action@v7.2.3
+        if: github.event_name == 'pull_request'
+        with:
+          args: build --snapshot --clean
+
+      - name: Run GoReleaser release
+        uses: goreleaser/goreleaser-action@v7.2.3
+        if: github.event_name == 'release'
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

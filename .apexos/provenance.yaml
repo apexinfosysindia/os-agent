@@ -1,0 +1,32 @@
+# =============================================================================
+# ApexOS skeleton provenance — written by `python -m apexos_harness package`.
+#
+# PIPELINE-OWNED SURFACES: `.apexos/**` and `.github/workflows/apexos-*.yml`
+# belong to the build-pipeline and are PRESERVED across upstream adoptions —
+# never hand-edit them in the product repo; regenerate via the harness.
+# Everything else in this repo is pipeline output from the upstream ref
+# recorded below (transform + patch queue, gate-clean at packaging time).
+# =============================================================================
+schema_version: 1
+repo: os-agent
+upstream:
+  url: https://github.com/home-assistant/os-agent
+  ref: main@2026-07-04
+  sha: bf6675ed31e358efa5784a062705eadf7aa39480
+apexos:
+  version: 0.1.1-dev
+  channel: dev
+packaged: '2026-07-04'
+build_pipeline:
+  org: apexinfosysindia
+  commit: 221ca3abd48bc00fed3da65888a9aa93d62e1bb4
+engine: text
+src_subdir: .
+patches:
+- name: 001-sentry-env-dsn.patch
+  status: clean
+  lines: 32
+gate:
+  violations: 0
+  allowed: 0
+  excluded_vendored: 0

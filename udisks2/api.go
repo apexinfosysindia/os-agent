@@ -130,7 +130,8 @@ func (o *Manager) CanRepair(ctx context.Context, inType string) (available struc
 // LoopSetup calls org.freedesktop.UDisks2.Manager.LoopSetup method.
 //
 // Annotations:
-//   @org.gtk.GDBus.C.UnixFD = 1
+//
+//	@org.gtk.GDBus.C.UnixFD = 1
 func (o *Manager) LoopSetup(ctx context.Context, fd dbus.UnixFD, options map[string]dbus.Variant) (resultingDevice dbus.ObjectPath, err error) {
 	err = o.object.CallWithContext(ctx, InterfaceManager+".LoopSetup", 0, fd, options).Store(&resultingDevice)
 	return
@@ -147,7 +148,8 @@ func (o *Manager) MDRaidCreate(ctx context.Context, blocks []dbus.ObjectPath, le
 // Deprecated will be removed later.
 //
 // Annotations:
-//   @org.freedesktop.DBus.Deprecated = true
+//
+//	@org.freedesktop.DBus.Deprecated = true
 func (o *Manager) EnableModules(ctx context.Context, enable bool) (err error) {
 	err = o.object.CallWithContext(ctx, InterfaceManager+".EnableModules", 0, enable).Store()
 	return
@@ -679,7 +681,8 @@ func (o *Block) Format(ctx context.Context, inType string, options map[string]db
 // OpenForBackup calls org.freedesktop.UDisks2.Block.OpenForBackup method.
 //
 // Annotations:
-//   @org.gtk.GDBus.C.UnixFD = 1
+//
+//	@org.gtk.GDBus.C.UnixFD = 1
 func (o *Block) OpenForBackup(ctx context.Context, options map[string]dbus.Variant) (fd dbus.UnixFD, err error) {
 	err = o.object.CallWithContext(ctx, InterfaceBlock+".OpenForBackup", 0, options).Store(&fd)
 	return
@@ -688,7 +691,8 @@ func (o *Block) OpenForBackup(ctx context.Context, options map[string]dbus.Varia
 // OpenForRestore calls org.freedesktop.UDisks2.Block.OpenForRestore method.
 //
 // Annotations:
-//   @org.gtk.GDBus.C.UnixFD = 1
+//
+//	@org.gtk.GDBus.C.UnixFD = 1
 func (o *Block) OpenForRestore(ctx context.Context, options map[string]dbus.Variant) (fd dbus.UnixFD, err error) {
 	err = o.object.CallWithContext(ctx, InterfaceBlock+".OpenForRestore", 0, options).Store(&fd)
 	return
@@ -697,7 +701,8 @@ func (o *Block) OpenForRestore(ctx context.Context, options map[string]dbus.Vari
 // OpenForBenchmark calls org.freedesktop.UDisks2.Block.OpenForBenchmark method.
 //
 // Annotations:
-//   @org.gtk.GDBus.C.UnixFD = 1
+//
+//	@org.gtk.GDBus.C.UnixFD = 1
 func (o *Block) OpenForBenchmark(ctx context.Context, options map[string]dbus.Variant) (fd dbus.UnixFD, err error) {
 	err = o.object.CallWithContext(ctx, InterfaceBlock+".OpenForBenchmark", 0, options).Store(&fd)
 	return
@@ -706,7 +711,8 @@ func (o *Block) OpenForBenchmark(ctx context.Context, options map[string]dbus.Va
 // OpenDevice calls org.freedesktop.UDisks2.Block.OpenDevice method.
 //
 // Annotations:
-//   @org.gtk.GDBus.C.UnixFD = 1
+//
+//	@org.gtk.GDBus.C.UnixFD = 1
 func (o *Block) OpenDevice(ctx context.Context, mode string, options map[string]dbus.Variant) (fd dbus.UnixFD, err error) {
 	err = o.object.CallWithContext(ctx, InterfaceBlock+".OpenDevice", 0, mode, options).Store(&fd)
 	return

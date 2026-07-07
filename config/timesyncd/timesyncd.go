@@ -2,10 +2,10 @@ package timesyncd
 
 import (
 	"fmt"
+	"github.com/apexinfosysindia/os-agent/utils/lineinfile"
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
 	"github.com/godbus/dbus/v5/prop"
-	"github.com/apexinfosysindia/os-agent/utils/lineinfile"
 	"regexp"
 	"strings"
 

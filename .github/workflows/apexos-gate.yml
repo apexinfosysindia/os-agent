@@ -15,6 +15,9 @@
 # `contents` permission on apexinfosysindia/build-pipeline ONLY. Needed because the
 # gate tool + master rename map live in the build-pipeline repo, not in the
 # product repos; the token can read nothing else and can write nothing.
+# Dependabot PRs skip the job (`github.actor` guard): the dependabot actor
+# can't read org secrets, so the checkout below would fail red — a skipped
+# required check passes branch protection instead.
 # =============================================================================
 name: apexos-gate
 
@@ -27,6 +30,10 @@ on:
 jobs:
   gate:   # job id == required status check name — never rename
     name: denylist gate (os-agent)
+    # dependabot's actor can't read org secrets (BUILD_PIPELINE_TOKEN) — the
+    # build-pipeline checkout would fail red. Skip instead: skipped required
+    # checks pass branch protection, and every human push still gates.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: checkout os-agent

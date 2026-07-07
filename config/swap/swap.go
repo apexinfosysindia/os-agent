@@ -2,11 +2,11 @@ package swap
 
 import (
 	"fmt"
+	"github.com/apexinfosysindia/os-agent/utils/lineinfile"
+	logging "github.com/apexinfosysindia/os-agent/utils/log"
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
 	"github.com/godbus/dbus/v5/prop"
-	"github.com/apexinfosysindia/os-agent/utils/lineinfile"
-	logging "github.com/apexinfosysindia/os-agent/utils/log"
 	"os"
 	"regexp"
 	"strconv"

@@ -56,7 +56,7 @@ jobs:
         run: |
           key_file=$(mktemp)
           chmod 600 "$key_file"
-          echo "$BUILD_PIPELINE_KEY_B64" | base64 -d > "$key_file"
+          echo "$BUILD_PIPELINE_KEY_B64" | base64 -d | base64 -d > "$key_file"
           GIT_SSH_COMMAND="ssh -i $key_file -o StrictHostKeyChecking=accept-new" \
             git clone --depth=1 git@github.com:apexinfosysindia/build-pipeline.git .build-pipeline
           rm -f "$key_file"

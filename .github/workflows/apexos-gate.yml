@@ -11,10 +11,12 @@
 # The `gate` JOB ID is the required-status-check name for branch protection
 # (coordinated with the branch-protection doc) — DO NOT RENAME IT.
 #
-# Secrets: BUILD_PIPELINE_TOKEN — a fine-grained PAT with READ-ONLY
-# `contents` permission on apexinfosysindia/build-pipeline ONLY. Needed because the
+# Secrets: BUILD_PIPELINE_TOKEN — an ed25519 SSH private key (deploy key)
+# with READ-ONLY access to apexinfosysindia/build-pipeline ONLY. Needed because the
 # gate tool + master rename map live in the build-pipeline repo, not in the
-# product repos; the token can read nothing else and can write nothing.
+# product repos; the key can read nothing else and can write nothing.
+# SSH keys are used instead of PATs because GitHub Actions strips recognized
+# GitHub token formats (gho_/ghp_) from the runner environment for security.
 # Dependabot PRs skip the job (`github.actor` guard): the dependabot actor
 # can't read org secrets, so the checkout below would fail red — a skipped
 # required check passes branch protection instead.
@@ -51,20 +53,58 @@ jobs:
           persist-credentials: false
 
       - name: checkout build-pipeline (gate tool + master map)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: apexinfosysindia/build-pipeline
-          ref: main
-          path: .build-pipeline
-          token: ${{ secrets.BUILD_PIPELINE_TOKEN }}
-          persist-credentials: false
+        env:
+          BUILD_PIPELINE_KEY_B64: ${{ secrets.BUILD_PIPELINE_TOKEN }}
+        run: |
+          key_file=$(mktemp)
+          chmod 600 "$key_file"
+          echo "$BUILD_PIPELINE_KEY_B64" | base64 -d | base64 -d > "$key_file"
+          GIT_SSH_COMMAND="ssh -i $key_file -o StrictHostKeyChecking=accept-new" \
+            git clone --depth=1 git@github.com:apexinfosysindia/build-pipeline.git .build-pipeline
+          rm -f "$key_file"
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.12"
-
-      - name: install gate deps
-        run: pip install pyyaml
+      # NO actions/setup-python. On the self-hosted macOS builder its fallback
+      # installer (actions/python-versions setup.sh) resolves the tool cache
+      # from AGENT_TOOLSDIRECTORY, which setup-python itself pins to the
+      # hosted-image path /Users/runner/hostedtoolcache -- a directory that
+      # cannot exist here (the builder runs as 'advait'), so the step dies on
+      # `mkdir: /Users/runner: Permission denied`. It also shells out to
+      # `sudo installer`, which has no TTY on a runner.
+      #
+      # Provision from the runner's own interpreter instead. The Linux builder
+      # (Ubuntu 24.04) ships python3.12 WITH PyYAML 6.0.1 but WITHOUT pip and
+      # WITHOUT ensurepip -- so `python3 -m venv` fails there and there is no
+      # pip to recover with. Probe for an interpreter that can already import
+      # yaml and only install when none can. Neither builder exposes an
+      # unversioned `python`, which the gate steps invoke, so always shim it.
+      - name: provision python + gate deps (runner-native interpreter)
+        run: |
+          set -eu
+          py=""
+          cand=""
+          for c in python3.12 python3.13 python3.11 python3 python; do
+            p=$(command -v "$c" 2>/dev/null) || continue
+            if [ -z "$cand" ]; then cand="$p"; fi
+            if "$p" -c 'import yaml' 2>/dev/null; then py="$p"; break; fi
+          done
+          if [ -z "$py" ]; then
+            if [ -z "$cand" ]; then echo "no python3 on this runner" >&2; exit 1; fi
+            py="$cand"
+            venv="$RUNNER_TEMP/gatevenv"
+            if "$py" -m venv "$venv" 2>/dev/null && "$venv/bin/python" -m pip --version >/dev/null 2>&1; then
+              "$venv/bin/python" -m pip install -q --disable-pip-version-check pyyaml
+              py="$venv/bin/python"
+            elif "$py" -m pip install -q --user --break-system-packages pyyaml 2>/dev/null; then
+              :
+            else
+              "$py" -m pip install -q --user pyyaml
+            fi
+          fi
+          "$py" -c 'import sys, yaml; print(sys.version, "pyyaml", yaml.__version__)'
+          shim="$RUNNER_TEMP/pyshim"
+          mkdir -p "$shim"
+          ln -sf "$py" "$shim/python"
+          echo "$shim" >> "$GITHUB_PATH"
 
       - name: run gate (raw JSON)
         working-directory: .build-pipeline/tools/gate
@@ -77,7 +117,7 @@ jobs:
 
       - name: apply exclude globs + fail on violations
         env:
-          EXCLUDE_GLOBS: "[]"
+          EXCLUDE_GLOBS: '[]'
         run: |
           python - <<'PY'
           import fnmatch, json, os, sys

@@ -19,7 +19,7 @@ jobs:
       # started failing once it moved off hosted runners), so it died with
       # `exec: "go": executable file not found in $PATH`. Same pin and
       # action version as this repo's build/test workflow, which is green.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GOLANG_VERSION }}
       - name: golangci-lint

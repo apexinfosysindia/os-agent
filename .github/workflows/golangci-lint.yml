@@ -12,7 +12,7 @@ jobs:
     name: lint
     runs-on: [self-hosted, apexos-builder]
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       # golangci-lint needs a Go toolchain on PATH: it shells out to
       # `go env`/go/packages to load the target packages. The self-hosted
       # builders ship no Go (hosted images did, which is why this job only

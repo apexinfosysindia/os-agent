@@ -1,3 +1,13 @@
+# ApexOS (package-time): open-pull-requests-limit is forced to 0 — routine
+# version-update PRs are OFF in this repo. This tree is GENERATED (upstream
+# snapshot + the pipeline's patch queue, see .apexos/provenance.yaml), so a
+# bump merged here is erased by the next package run; the pins that stick are
+# the ones the pipeline owns, in its workflow templates and patch queues.
+# Upstream ships `interval: daily` with a limit of 10 per ecosystem, which
+# across the fleet meant dozens of PRs a day, each dragging its own CI run
+# onto two single-concurrency self-hosted builders (2026-08-12: 56 open at
+# once, 19 of their runs squatting the queue). A limit of 0 stops version
+# updates only — SECURITY updates are unaffected by this setting.
 version: 2
 updates:
 
@@ -6,11 +16,11 @@ updates:
   schedule:
     interval: daily
     time: "06:00"
-  open-pull-requests-limit: 10
+  open-pull-requests-limit: 0
 
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:
     interval: daily
     time: "06:00"
-  open-pull-requests-limit: 10
+  open-pull-requests-limit: 0

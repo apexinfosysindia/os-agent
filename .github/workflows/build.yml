@@ -12,7 +12,7 @@ env:
 jobs:
   build:
     name: Build OS-Agent
-    runs-on: [self-hosted, apexos-builder]
+    runs-on: [self-hosted, apexos-builder, linux, X64]
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v7.0.0

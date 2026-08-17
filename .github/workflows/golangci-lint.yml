@@ -10,7 +10,7 @@ env:
 jobs:
   golangci:
     name: lint
-    runs-on: [self-hosted, apexos-builder]
+    runs-on: [self-hosted, apexos-builder, linux, X64]
     steps:
       - uses: actions/checkout@v7.0.0
       # golangci-lint needs a Go toolchain on PATH: it shells out to

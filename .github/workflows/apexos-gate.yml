@@ -43,12 +43,21 @@ jobs:
     # build-pipeline checkout would fail red. Skip instead: skipped required
     # checks pass branch protection, and every human push still gates.
     if: github.actor != 'dependabot[bot]'
+    # Linux builder ONLY. This job is arch-agnostic (a git clone and two python
+    # scripts), so the arch is not what the pin is for: the bare
+    # [self-hosted, apexos-builder] label set matches BOTH builders, and the
+    # ARM64 one is a macOS workstation which is also the fleet's only aarch64
+    # capacity. Left unpinned, this workflow — rendered into EVERY product repo,
+    # so the single most-run job in the org — was a coin flip that could park on
+    # the aarch64 builder and starve the image/OS builds queued behind it. It
+    # also made the python provisioning below (see the next comment) resolve
+    # differently run to run. GNU coreutils are assumed by the gate steps.
     runs-on: [self-hosted, apexos-builder, linux, X64]
     permissions:
       contents: read # checkout of the product repo + build-pipeline
     steps:
       - name: checkout os-agent
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -63,7 +72,9 @@ jobs:
             git clone --depth=1 git@github.com:apexinfosysindia/build-pipeline.git .build-pipeline
           rm -f "$key_file"
 
-      # NO actions/setup-python. On the self-hosted macOS builder its fallback
+      # NO actions/setup-python. The runs-on pin above means this job no longer
+      # reaches the macOS builder, so the first paragraph is now history plus
+      # defence-in-depth — keep it: on the self-hosted macOS builder its fallback
       # installer (actions/python-versions setup.sh) resolves the tool cache
       # from AGENT_TOOLSDIRECTORY, which setup-python itself pins to the
       # hosted-image path /Users/runner/hostedtoolcache -- a directory that
@@ -117,7 +128,7 @@ jobs:
 
       - name: apply exclude globs + fail on violations
         env:
-          EXCLUDE_GLOBS: '[]'
+          EXCLUDE_GLOBS: "[]"
         run: |
           python - <<'PY'
           import fnmatch, json, os, sys

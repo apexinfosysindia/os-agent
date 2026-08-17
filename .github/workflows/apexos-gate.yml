@@ -43,7 +43,7 @@ jobs:
     # build-pipeline checkout would fail red. Skip instead: skipped required
     # checks pass branch protection, and every human push still gates.
     if: github.actor != 'dependabot[bot]'
-    runs-on: [self-hosted, apexos-builder]
+    runs-on: [self-hosted, apexos-builder, linux, X64]
     permissions:
       contents: read # checkout of the product repo + build-pipeline
     steps:

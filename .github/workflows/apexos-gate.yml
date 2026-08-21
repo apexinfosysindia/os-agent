@@ -52,7 +52,7 @@ jobs:
     # the aarch64 builder and starve the image/OS builds queued behind it. It
     # also made the python provisioning below (see the next comment) resolve
     # differently run to run. GNU coreutils are assumed by the gate steps.
-    runs-on: [self-hosted, apexos-builder, linux, X64]
+    runs-on: ${{ fromJSON(vars.APEXOS_RUNSON_AMD64 || '["self-hosted","apexos-builder","linux","X64"]') }}
     permissions:
       contents: read # checkout of the product repo + build-pipeline
     steps:

@@ -15,7 +15,6 @@ import (
 	"github.com/apexinfosysindia/os-agent/cgroup"
 	"github.com/apexinfosysindia/os-agent/config/swap"
 	"github.com/apexinfosysindia/os-agent/config/timesyncd"
-	"github.com/apexinfosysindia/os-agent/config/usbip"
 	"github.com/apexinfosysindia/os-agent/datadisk"
 	"github.com/apexinfosysindia/os-agent/system"
 	logging "github.com/apexinfosysindia/os-agent/utils/log"
@@ -83,7 +82,6 @@ func main() {
 	boards.InitializeDBus(conn, board)
 	swap.InitializeDBus(conn)
 	timesyncd.InitializeDBus(conn)
-	usbip.InitializeDBus(conn)
 
 	_, err = daemon.SdNotify(false, daemon.SdNotifyReady)
 	if err != nil {

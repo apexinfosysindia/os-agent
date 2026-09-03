@@ -1,36 +1,54 @@
 package system
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
+	"github.com/natefinch/atomic"
+	"golang.org/x/crypto/ssh"
 
 	logging "github.com/apexinfosysindia/os-agent/utils/log"
 )
 
 const (
-	objectPath                = "/io/apexos/os/System"
-	ifaceName                 = "io.apexos.os.System"
-	labelDataFileSystem       = "apexos-data"
-	labelOverlayFileSystem    = "apexos-overlay"
-	kernelCommandLine         = "/mnt/boot/cmdline.txt"
-	tmpKernelCommandLine      = "/mnt/boot/.tmp.cmdline.txt"
-	sshAuthKeyFileName        = "/root/.ssh/authorized_keys"
+	objectPath             = "/io/apexos/os/System"
+	ifaceName              = "io.apexos.os.System"
+	labelDataFileSystem    = "apexos-data"
+	labelOverlayFileSystem = "apexos-overlay"
+	kernelCommandLine      = "/mnt/boot/cmdline.txt"
+	tmpKernelCommandLine   = "/mnt/boot/.tmp.cmdline.txt"
+	sshAuthKeyFileName     = "/root/.ssh/authorized_keys"
+	// dropbear, which consumes authorized_keys on ApexOS, ignores
+	// lines longer than MAX_AUTHKEYS_LINE (3000 bytes) and treats lines over
+	// 10000 bytes as end-of-file, hiding all keys after them.
+	sshAuthKeyMaxLength       = 3000
 	containerdSnapshotterFlag = "/mnt/data/.docker-use-containerd-snapshotter"
+	dockerDataRoot            = "/mnt/data/docker"
+	dockerWipeScheduledFlag   = "/mnt/data/docker/.wipe-scheduled"
 )
 
 type system struct {
 	conn *dbus.Conn
 }
 
+// sshAuthKeyMu serializes modifications of the authorized_keys file: adding
+// a key is a read-modify-write cycle, and D-Bus method calls are dispatched
+// on separate goroutines, so concurrent calls could otherwise lose updates.
+var sshAuthKeyMu sync.Mutex
+
 func (d system) ScheduleWipeDevice() (bool, *dbus.Error) {
 
 	data, err := os.ReadFile(kernelCommandLine)
 	if err != nil {
-		fmt.Println(err)
+		err = fmt.Errorf("failed to read kernel command line: %w", err)
+		logging.Error.Printf("%s", err)
 		return false, dbus.MakeFailedError(err)
 	}
 
@@ -39,14 +57,16 @@ func (d system) ScheduleWipeDevice() (bool, *dbus.Error) {
 
 	err = os.WriteFile(tmpKernelCommandLine, []byte(datastr), 0644) //nolint:gosec
 	if err != nil {
-		fmt.Println(err)
+		err = fmt.Errorf("failed to write kernel command line: %w", err)
+		logging.Error.Printf("%s", err)
 		return false, dbus.MakeFailedError(err)
 	}
 
 	// Boot is mounted sync on ApexOS, so just rename should be fine.
 	err = os.Rename(tmpKernelCommandLine, kernelCommandLine)
 	if err != nil {
-		fmt.Println(err)
+		err = fmt.Errorf("failed to replace kernel command line: %w", err)
+		logging.Error.Printf("%s", err)
 		return false, dbus.MakeFailedError(err)
 	}
 
@@ -54,18 +74,76 @@ func (d system) ScheduleWipeDevice() (bool, *dbus.Error) {
 	return true, nil
 }
 
-func (d system) AddSSHAuthKey(newKey string) *dbus.Error {
-
-	file, err := os.OpenFile(sshAuthKeyFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		logging.Error.Printf("Failed to open SSH authentication file %s: %s", sshAuthKeyFileName, err)
-		return dbus.MakeFailedError(err)
+// validateSSHAuthKey checks that newKey is a single well-formed OpenSSH
+// authorized_keys entry and returns it in trimmed form. This is a safety
+// check for the file format, not policy: any entry the OpenSSH parser
+// accepts (including options) passes. Control characters are rejected so a
+// single call can never write more than one line. Unlike sshd, dropbear
+// (the consumer of this file on ApexOS) does not treat tab as a
+// field separator, so tabs are rejected as well.
+func validateSSHAuthKey(newKey string) (string, error) {
+	key := strings.TrimSpace(newKey)
+	if key == "" {
+		return "", errors.New("SSH authorized key is empty")
+	}
+	if len(key) > sshAuthKeyMaxLength {
+		return "", fmt.Errorf("SSH authorized key is longer than %d bytes", sshAuthKeyMaxLength)
+	}
+	for _, r := range key {
+		if r < 0x20 || r == 0x7f {
+			return "", errors.New("SSH authorized key contains control characters")
+		}
 	}
 
-	defer file.Close()
+	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("invalid SSH authorized key: %w", err)
+	}
+	if len(rest) > 0 {
+		return "", errors.New("unexpected data after SSH authorized key")
+	}
 
-	if _, err := file.WriteString(newKey + "\n"); err != nil {
-		logging.Error.Printf("Failed to write SSH authentication file: %s.", err)
+	return key, nil
+}
+
+func addSSHAuthKey(path string, newKey string) error {
+	key, err := validateSSHAuthKey(newKey)
+	if err != nil {
+		return err
+	}
+
+	sshAuthKeyMu.Lock()
+	defer sshAuthKeyMu.Unlock()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("failed to create SSH configuration directory: %w", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read SSH authorized keys file: %w", err)
+	}
+	if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
+		content = append(content, '\n')
+	}
+	content = append(content, key...)
+	content = append(content, '\n')
+
+	if err := atomic.WriteFile(path, bytes.NewReader(content)); err != nil {
+		return fmt.Errorf("failed to write SSH authorized keys file: %w", err)
+	}
+	// atomic.WriteFile keeps the permissions of an existing file, so tighten
+	// them explicitly (files created before this change were 0644).
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("failed to set SSH authorized keys file permissions: %w", err)
+	}
+
+	return nil
+}
+
+func (d system) AddSSHAuthKey(newKey string) *dbus.Error {
+	if err := addSSHAuthKey(sshAuthKeyFileName, newKey); err != nil {
+		logging.Error.Printf("Failed to add SSH authorized key: %s", err)
 		return dbus.MakeFailedError(err)
 	}
 
@@ -74,13 +152,59 @@ func (d system) AddSSHAuthKey(newKey string) *dbus.Error {
 	return nil
 }
 
+func clearSSHAuthKeys(path string) error {
+	sshAuthKeyMu.Lock()
+	defer sshAuthKeyMu.Unlock()
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
+}
+
 func (d system) ClearSSHAuthKeys() *dbus.Error {
-	if err := os.Remove(sshAuthKeyFileName); err != nil && os.IsNotExist(err) {
+	if err := clearSSHAuthKeys(sshAuthKeyFileName); err != nil {
 		logging.Error.Printf("Failed to delete SSH authentication file %s: %s", sshAuthKeyFileName, err)
 		return dbus.MakeFailedError(err)
 	}
 
 	return nil
+}
+
+func listSSHAuthKeys(path string) ([]string, error) {
+	sshAuthKeyMu.Lock()
+	defer sshAuthKeyMu.Unlock()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to read SSH authorized keys file: %w", err)
+	}
+
+	keys := []string{}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		// Skip blank and comment lines, like sshd and dropbear do
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keys = append(keys, line)
+	}
+
+	return keys, nil
+}
+
+func (d system) ListSSHAuthKeys() ([]string, *dbus.Error) {
+	keys, err := listSSHAuthKeys(sshAuthKeyFileName)
+	if err != nil {
+		logging.Error.Printf("Failed to list SSH authorized keys: %s", err)
+		return nil, dbus.MakeFailedError(err)
+	}
+
+	return keys, nil
 }
 
 func (d system) MigrateDockerStorageDriver(backend string) *dbus.Error {
@@ -89,7 +213,8 @@ func (d system) MigrateDockerStorageDriver(backend string) *dbus.Error {
 		// Write the backend name to the flag file
 		err := os.WriteFile(containerdSnapshotterFlag, []byte(backend), 0644) //nolint:gosec
 		if err != nil {
-			logging.Error.Printf("Failed to write containerd snapshotter flag: %s", err)
+			err = fmt.Errorf("failed to write containerd snapshotter flag: %w", err)
+			logging.Error.Printf("%s", err)
 			return dbus.MakeFailedError(err)
 		}
 		logging.Info.Printf("Storage driver set to overlayfs containerd snapshotter")
@@ -98,6 +223,32 @@ func (d system) MigrateDockerStorageDriver(backend string) *dbus.Error {
 	}
 
 	return nil
+}
+
+func (d system) ScheduleDockerStorageReset() (bool, *dbus.Error) {
+
+	// The flag file is created inside the Docker data root, so it gets removed
+	// along with the storage itself.
+	info, err := os.Stat(dockerDataRoot)
+	if err != nil {
+		err = fmt.Errorf("failed to access Docker data root: %w", err)
+		logging.Error.Printf("%s", err)
+		return false, dbus.MakeFailedError(err)
+	}
+	if !info.IsDir() {
+		err = fmt.Errorf("Docker data root %s is not a directory", dockerDataRoot) //nolint:staticcheck // ST1005: Docker is a proper noun
+		logging.Error.Printf("%s", err)
+		return false, dbus.MakeFailedError(err)
+	}
+
+	if err := os.WriteFile(dockerWipeScheduledFlag, nil, 0644); err != nil { //nolint:gosec
+		err = fmt.Errorf("failed to write Docker storage reset flag: %w", err)
+		logging.Error.Printf("%s", err)
+		return false, dbus.MakeFailedError(err)
+	}
+
+	logging.Info.Printf("Docker storage will be reset on next reboot!")
+	return true, nil
 }
 
 func InitializeDBus(conn *dbus.Conn) {

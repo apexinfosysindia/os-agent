@@ -1,7 +1,7 @@
 # Agent for ApexOS
 
 This is the OS Agent for ApexOS. It is used for ApexOS
-OS and ApexOS Supervised installation types and it allows the
+and ApexOS Supervised installation types and it allows the
 ApexOS Supervisor to communicate with the host operating system.
 
 ## Installation & Update

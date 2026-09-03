@@ -11,21 +11,24 @@ schema_version: 1
 repo: os-agent
 upstream:
   url: https://github.com/home-assistant/os-agent
-  ref: main@2026-07-04
-  sha: bf6675ed31e358efa5784a062705eadf7aa39480
+  ref: 1.13.0
+  sha: ad5e5bf0b5c5e9f06a0d223266dc2b25885441bb
 apexos:
-  version: 0.1.1-dev
+  version: 0.1.17-dev
   channel: dev
-packaged: '2026-07-07'
+packaged: '2026-09-03'
 build_pipeline:
   org: apexinfosysindia
-  commit: a10c22cdcb873eee6a0256a17a7bd0594341d40e
+  commit: f8a5d63a68f4d4c05b396a3aaa2e134d3d9209b7
 engine: text
 src_subdir: .
 patches:
-- name: 001-sentry-env-dsn.patch
-  status: clean
-  lines: 32
+  - name: 001-sentry-env-dsn.patch
+    status: clean
+    lines: 32
+  - name: 002-golangci-lint-setup-go.patch
+    status: clean
+    lines: 12
 gate:
   violations: 0
   allowed: 0

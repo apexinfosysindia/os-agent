@@ -1,0 +1,9 @@
+name-template: '$RESOLVED_VERSION'
+tag-template: '$RESOLVED_VERSION'
+categories:
+  - type: version-resolver
+    semver-increment: minor
+template: |
+  ## What's Changed
+  
+  $CHANGES

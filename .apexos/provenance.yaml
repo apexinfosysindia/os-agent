@@ -11,15 +11,15 @@ schema_version: 1
 repo: os-agent
 upstream:
   url: https://github.com/home-assistant/os-agent
-  ref: 1.13.0
-  sha: ad5e5bf0b5c5e9f06a0d223266dc2b25885441bb
+  ref: 1.14.0
+  sha: bf13a1aa84bca4d88698be980b98dfafcb560fbb
 apexos:
   version: 0.1.17-dev
   channel: dev
-packaged: '2026-09-03'
+packaged: '2026-09-16'
 build_pipeline:
   org: apexinfosysindia
-  commit: f8a5d63a68f4d4c05b396a3aaa2e134d3d9209b7
+  commit: ac7fe4fd8fb84b6b496cc4a795084633bac2ab77
 engine: text
 src_subdir: .
 patches:
